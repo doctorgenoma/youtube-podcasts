@@ -73,6 +73,7 @@ def generate_rss(episodes):
         f.write(rss_feed)
 
 def download_and_metadata(video_url):
+    # BLINDAJE: Combinamos clientes de TV/Música con autenticación de Cookies
     ydl_opts = {
         'format': 'bestaudio/best', 
         'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -90,6 +91,14 @@ def download_and_metadata(video_url):
             }
         }
     }
+    
+    # Inyectamos de manera segura las cookies frescas que acabas de configurar
+    cookie_path = os.path.abspath('cookies.txt')
+    if os.path.exists(cookie_path):
+        ydl_opts['cookiefile'] = cookie_path
+        print("-> Autenticando descarga con el nuevo archivo de cookies...")
+    else:
+        print("⚠️ Advertencia: No se encontró el archivo cookies.txt en el entorno.")
     
     os.makedirs('downloads', exist_ok=True)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
