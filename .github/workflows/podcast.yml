@@ -2,11 +2,15 @@ name: Sync YouTube Podcast
 
 on:
   schedule:
-    - cron: '0 4 * * *' # Se ejecuta de forma automática a las 4:00 AM cada día
-  workflow_dispatch: # Te permite darle al botón "Run workflow" manualmente
+    - cron: '0 4 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
+
+# Solución al aviso de GitHub de Node.js 20
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true' 
 
 jobs:
   build:
@@ -44,6 +48,12 @@ jobs:
         run: |
           git config --global user.name "PodcastBot"
           git config --global user.email "bot@podcast.com"
-          # Añadir cambios tanto si hay nuevos datos como si solo se regeneró el xml
           git add podcast_data.json feed.xml || true
-          git commit -m "Bot: Actualizar feed del podcast" && git push || echo "No hay cambios para subir"
+          
+          # Comprobación segura para evitar que git falle si no hay cambios reales
+          if git diff --staged --quiet; then
+            echo "No hay cambios en los archivos. Nada que subir."
+          else
+            git commit -m "Bot: Actualizar feed del podcast"
+            git push origin main || git push origin master
+          fi
