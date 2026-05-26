@@ -30,9 +30,9 @@ def get_urls():
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
 def download_and_metadata(video_url):
-    # Formato ultra-compatible: ba = bestaudio, b = best (cualquier cosa que funcione)
+    # Forzamos compatibilidad máxima de formatos y simuladores de clientes (iOS, Android, Web)
     ydl_opts = {
-        'format': 'ba/b', 
+        'format': 'bestaudio/best', 
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
@@ -41,6 +41,12 @@ def download_and_metadata(video_url):
         }],
         'quiet': True,
         'no_warnings': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios', 'web'],
+                'skip': ['dash', 'hls']
+            }
+        }
     }
     
     cookie_path = os.path.abspath('cookies.txt')
@@ -111,15 +117,20 @@ def main():
     new_episodes_added = False
     
     for url in urls:
-        # CORRECCIÓN CLAVE: Si la URL es un vídeo de una lista, la limpiamos radicalmente
         if 'watch?v=' in url:
             video_id_clean = url.split('v=')[1].split('&')[0]
             url = f"https://www.youtube.com/watch?v={video_id_clean}"
 
+        # Configuración simplificada y robusta para la fase de análisis
         ydl_opts_flat = {
             'quiet': True,
             'extract_flat': True,
             'no_warnings': True,
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android', 'ios', 'web']
+                }
+            }
         }
         cookie_path = os.path.abspath('cookies.txt')
         if os.path.exists(cookie_path):
@@ -131,7 +142,6 @@ def main():
                 info = ydl.extract_info(url, download=False)
                 
                 if 'entries' in info and info['entries']:
-                    # Si explícitamente es una lista/canal y NO un vídeo suelto
                     if 'list=' in url and 'watch?v=' not in url:
                         latest_entry = info['entries'][-1]
                         tipo = "playlist"
