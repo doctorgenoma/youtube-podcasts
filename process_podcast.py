@@ -23,14 +23,15 @@ def get_urls():
     with open('urls.txt', 'r', encoding='utf-8') as f:
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
-def download_and_metadata(url):
+def download_and_metadata(video_url):
+    """Procesa y descarga un único vídeo individual seguro"""
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
-            'preferredquality': '128', # 128kbps es ideal para podcast y ahorra espacio
+            'preferredquality': '128', 
         }],
         'quiet': True,
         'no_warnings': True,
@@ -40,10 +41,9 @@ def download_and_metadata(url):
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
-            info = ydl.extract_info(url, download=True)
+            info = ydl.extract_info(video_url, download=True)
             video_id = info['id']
             
-            # Formatear fecha al estándar de Podcasts (RFC 822)
             upload_date = info.get('upload_date', datetime.now().strftime('%Y%m%d'))
             dt = datetime.strptime(upload_date, '%Y%m%d')
             pub_date = dt.strftime('%a, %d %b %Y %H:%M:%S +0000')
@@ -57,17 +57,15 @@ def download_and_metadata(url):
                 'duration': info.get('duration', 0)
             }
         except Exception as e:
-            print(f"Error procesando {url}: {e}")
+            print(f"Error descargando el video {video_url}: {e}")
             return None
 
 def generate_rss(episodes):
     rss_items = ""
     for ep in episodes:
-        # Limpieza básica de caracteres inválidos para XML
         title = ep['title'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         desc = ep['description'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         
-        # Formatear duración de segundos a hh:mm:ss
         seconds = ep['duration']
         hours = seconds // 3600
         minutes = (seconds % 3600) // 60
@@ -106,32 +104,55 @@ def main():
     new_episodes_added = False
     
     for url in urls:
-        # Extraer ID rápido para comprobar si ya lo tenemos
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+        # TRUCO: 'extract_flat' no descarga nada, solo lee la lista. 
+        # 'playlist_items': '1' fuerza a leer SOLO el primer video (el más reciente).
+        ydl_opts_flat = {
+            'quiet': True,
+            'extract_flat': True,
+            'playlist_items': '1',
+            'no_warnings': True,
+        }
+        
+        print(f"Analizando origen: {url}")
+        with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
             try:
                 info = ydl.extract_info(url, download=False)
-                video_id = info['id']
-            except:
+                
+                # Si es un canal o playlist, info contiene 'entries'
+                if 'entries' in info and info['entries']:
+                    latest_entry = info['entries'][0]
+                    video_id = latest_entry['id']
+                    video_url = f"https://www.youtube.com/watch?v={video_id}"
+                    print(f"-> Detectado canal/playlist. El vídeo más reciente es: {video_id}")
+                else:
+                    # Si era un vídeo individual directo
+                    video_id = info['id']
+                    video_url = url
+                    print(f"-> Detectado vídeo individual: {video_id}")
+                    
+            except Exception as e:
+                print(f"Error al analizar la URL {url}: {e}")
                 continue
                 
+        # Comprobar si ya lo teníamos en el podcast
         if video_id in existing_ids:
+            print(f"El vídeo {video_id} ya ha sido procesado previamente. Saltando...")
             continue
             
-        print(f"Procesando nuevo vídeo: {video_id}")
-        ep_meta = download_and_metadata(url)
+        print(f"¡Nuevo episodio encontrado! Iniciando descarga segura de: {video_id}")
+        ep_meta = download_and_metadata(video_url)
         if ep_meta:
-            data.insert(0, ep_meta) # Los nuevos aparecen arriba
+            data.insert(0, ep_meta)
             new_episodes_added = True
             
-    # Forzar la generación del RSS siempre para mantenerlo actualizado
     generate_rss(data)
     
-    if new_episodes_added:
-        save_data(data)
-        with open(os.environ['GITHUB_ENV'], 'a') as f:
+    # Comunicar el resultado a GitHub Actions
+    github_env = os.environ.get('GITHUB_ENV', 'dummy_env.txt')
+    with open(github_env, 'a') as f:
+        if new_episodes_added:
             f.write("NEW_EPISODES=true\n")
-    else:
-        with open(os.environ['GITHUB_ENV'], 'a') as f:
+        else:
             f.write("NEW_EPISODES=false\n")
 
 if __name__ == '__main__':
