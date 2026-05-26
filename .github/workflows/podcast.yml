@@ -28,27 +28,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      # ACTUALIZACIÓN: Instalamos la versión más reciente en desarrollo de yt-dlp
       - name: Instalar yt-dlp actualizado
         run: |
           python3 -m pip install --upgrade pip
           pip install --no-cache-dir https://github.com/yt-dlp/yt-dlp/archive/master.tar.gz
 
-      - name: Configurar Cookies de YouTube
-        env:
-          TEMP_COOKIES: ${{ secrets.YT_COOKIES }}
-        if: env.TEMP_COOKIES != ''
-        run: |
-          echo "$TEMP_COOKIES" > cookies.txt
-
       - name: Ejecutar script de Python
         run: python process_podcast.py
 
-      - name: Eliminar Cookies temporales
-        run: rm -f cookies.txt
+      # PASO NUEVO: Verificamos en los logs si el MP3 existe físicamente
+      - name: Verificar archivos descargados
+        run: |
+          echo "=== Contenido de la carpeta downloads ==="
+          ls -la downloads/ || echo "La carpeta downloads está VACÍA"
 
+      # ACTUALIZACIÓN: Eliminamos el 'if' para forzar a GitHub a intentar la subida siempre
       - name: Subir MP3 a GitHub Releases
-        if: env.NEW_EPISODES == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: episodes
