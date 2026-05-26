@@ -1,19 +1,10 @@
 import os
 import json
-import urllib.request
-import urllib.parse
+import yt_dlp
 from datetime import datetime
 
 REPO_NAME = os.environ.get('GITHUB_REPOSITORY', 'tu-usuario/tu-repositorio')
 RELEASE_URL_TEMPLATE = f"https://github.com/{REPO_NAME}/releases/download/episodes/{{video_id}}.mp3"
-
-# Lista de servidores espejo alternativos de Invidious por si uno falla
-INVIDIOUS_INSTANCES = [
-    "https://inv.tux.digital",
-    "https://invidious.nerdvpn.de",
-    "https://yewtu.be",
-    "https://invidious.flokinet.to"
-]
 
 def load_data():
     if os.path.exists('podcast_data.json'):
@@ -42,105 +33,60 @@ def clean_video_id(url):
         return url.split('youtu.be/')[1].split('?')[0]
     return None
 
-def download_audio_via_invidious(video_id):
-    os.makedirs('downloads', exist_ok=True)
-    output_path = f"downloads/{video_id}.mp3"
+def download_and_metadata(video_url):
+    # PARÁMETROS DE CAMUFLAJE EXTREMO
+    ydl_opts = {
+        'format': 'ba/b',  # Descarga el mejor audio o lo que esté disponible
+        'outtmpl': 'downloads/%(id)s.%(ext)s',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '128', 
+        }],
+        'quiet': False,       # Activamos logs para ver exactamente qué hace
+        'no_warnings': False,
+        # Fingimos ser un navegador Safari en MacOS legítimo
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'es-ES,es;q=0.9',
+            'Sec-Fetch-Mode': 'navigate',
+        },
+        # Forzamos los clientes nativos simulados que mejor saltan las restricciones
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['ios', 'android'],
+                'skip': ['dash', 'hls']
+            }
+        },
+        'sleep_interval': 3, # Espera 3 segundos para no saturar
+    }
     
-    for instance in INVIDIOUS_INSTANCES:
-        # Intentamos obtener los metadatos del vídeo desde la API de Invidious
-        api_url = f"{instance}/api/v1/videos/{video_id}"
-        print(f"-> Intentando conectar con espejo: {instance}")
+    cookie_path = os.path.abspath('cookies.txt')
+    if os.path.exists(cookie_path):
+        ydl_opts['cookiefile'] = cookie_path
+        print("-> Añadiendo pasaporte de cookies al camuflaje...")
+        
+    os.makedirs('downloads', exist_ok=True)
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
-            req = urllib.request.Request(api_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=15) as response:
-                video_data = json.loads(response.read().decode())
-                
-            # Buscamos la pista de audio en la lista de formatos devuelta
-            adaptive_formats = video_data.get('adaptiveFormats', [])
-            audio_url = None
-            
-            # Buscamos preferiblemente un formato tipo audio puro
-            for f in adaptive_formats:
-                if "audio/" in f.get('type', ''):
-                    audio_url = f.get('url')
-                    break
-            
-            # Si no hay audio puro, cogemos el formato de vídeo de menor calidad para extraer el audio
-            if not audio_url and adaptive_formats:
-                audio_url = adaptive_formats[0].get('url')
-                
-            if not audio_url:
-                continue
-                
-            # Descargamos el archivo directamente usando FFmpeg para asegurar que se guarde como MP3 válido
-            print(f"-> Descargando flujo de audio e indexando a MP3...")
-            ffmpeg_cmd = f'ffmpeg -y -i "{audio_url}" -vn -ar 44100 -ac 2 -b:a 128k "{output_path}"'
-            exit_code = os.system(ffmpeg_cmd)
-            
-            if exit_code == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
-                # Extraemos metadatos básicos para el RSS
-                duration = video_data.get('lengthSeconds', 0)
-                title = video_data.get('title', 'Audio de YouTube')
-                description = video_data.get('description', '')[:400] + '...'
-                
-                # Formateamos la fecha de publicación
-                pub_date = datetime.now().strftime('%a, %d %b %Y %H:%M:%S +0000')
-                try:
-                    ts = video_data.get('published', 0)
-                    if ts:
-                        pub_date = datetime.fromtimestamp(ts).strftime('%a, %d %b %Y %H:%M:%S +0000')
-                except Exception:
-                    pass
+            info = ydl.extract_info(video_url, download=True)
+            video_id = info['id']
+            upload_date = info.get('upload_date', datetime.now().strftime('%Y%m%d'))
+            dt = datetime.strptime(upload_date, '%Y%m%d')
+            pub_date = dt.strftime('%a, %d %b %Y %H:%M:%S +0000')
 
-                print(f"¡Éxito! Descargado: {title}")
-                return {
-                    'id': video_id,
-                    'title': title,
-                    'description': description,
-                    'pubDate': pub_date,
-                    'audio_url': RELEASE_URL_TEMPLATE.format(video_id=video_id),
-                    'duration': duration
-                }
+            return {
+                'id': video_id,
+                'title': info.get('title', 'Sin título'),
+                'description': info.get('description', 'Sin descripción')[:400] + '...',
+                'pubDate': pub_date,
+                'audio_url': RELEASE_URL_TEMPLATE.format(video_id=video_id),
+                'duration': info.get('duration', 0)
+            }
         except Exception as e:
-            print(f"Aviso: El espejo {instance} falló o dio error: {e}")
-            continue
-            
-    return None
-
-def generate_rss(episodes):
-    rss_items = ""
-    for ep in episodes:
-        title = ep['title'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-        desc = ep['description'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-        seconds = ep['duration']
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        secs = seconds % 60
-        duration_str = f"{hours:02d}:{minutes:02d}:{secs:02d}"
-
-        rss_items += f"""
-        <item>
-            <title>{title}</title>
-            <description>{desc}</description>
-            <pubDate>{ep['pubDate']}</pubDate>
-            <enclosure url="{ep['audio_url']}" type="audio/mpeg" />
-            <guid isPermaLink="false">{ep['id']}</guid>
-            <itunes:duration>{duration_str}</itunes:duration>
-        </item>"""
-
-    rss_feed = f"""<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
-  <channel>
-    <title>Mi Podcast Automatizado</title>
-    <link>https://github.com/{REPO_NAME}</link>
-    <language>es</language>
-    <description>Audios de YouTube convertidos a Podcast.</description>
-    <itunes:image href="https://raw.githubusercontent.com/{REPO_NAME}/main/podcast_cover.jpg"/>
-    {rss_items}
-  </channel>
-</rss>"""
-    with open('feed.xml', 'w', encoding='utf-8') as f:
-        f.write(rss_feed)
+            print(f"Error crítico en descarga: {e}")
+            return None
 
 def main():
     data = load_data()
@@ -151,25 +97,25 @@ def main():
     for url in urls:
         video_id = clean_video_id(url)
         if not video_id:
-            print(f"No se pudo extraer un ID de vídeo válido de: {url}")
+            print(f"URL no reconocida: {url}")
             continue
             
-        print(f"Analizando origen: {url} (ID: {video_id})")
+        print(f"Analizando origen limpio: https://www.youtube.com/watch?v={video_id}")
         
         if video_id in existing_ids:
-            print(f"El vídeo {video_id} ya existe en el historial. Saltando...")
+            print(f"El vídeo {video_id} ya existe. Saltando...")
             continue
             
-        print(f"¡Nuevo episodio detectado! Procesando a través de pasarela alternativa...")
-        ep_meta = download_audio_via_invidious(video_id)
+        video_url = f"https://www.youtube.com/watch?v={video_id}"
+        print(f"¡Nuevo episodio encontrado! Iniciando descarga en modo sigilo...")
         
+        ep_meta = download_and_metadata(video_url)
         if ep_meta:
             data.insert(0, ep_meta)
             new_episodes_added = True
-        else:
-            print(f"No se pudo descargar el vídeo {video_id} tras intentar con todos los espejos.")
             
     generate_rss(data)
+    
     if new_episodes_added:
         save_data(data)
         
