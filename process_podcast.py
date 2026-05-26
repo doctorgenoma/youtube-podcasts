@@ -30,8 +30,9 @@ def get_urls():
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
 def download_and_metadata(video_url):
+    # Formato ultra-compatible: ba = bestaudio, b = best (cualquier cosa que funcione)
     ydl_opts = {
-        'format': 'bestaudio/bestvideo+bestaudio/best', 
+        'format': 'ba/b', 
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
@@ -42,7 +43,6 @@ def download_and_metadata(video_url):
         'no_warnings': True,
     }
     
-    # Ruta absoluta para asegurar que yt-dlp encuentra las cookies en el servidor
     cookie_path = os.path.abspath('cookies.txt')
     if os.path.exists(cookie_path):
         ydl_opts['cookiefile'] = cookie_path
@@ -111,6 +111,11 @@ def main():
     new_episodes_added = False
     
     for url in urls:
+        # CORRECCIÓN CLAVE: Si la URL es un vídeo de una lista, la limpiamos radicalmente
+        if 'watch?v=' in url:
+            video_id_clean = url.split('v=')[1].split('&')[0]
+            url = f"https://www.youtube.com/watch?v={video_id_clean}"
+
         ydl_opts_flat = {
             'quiet': True,
             'extract_flat': True,
@@ -126,21 +131,15 @@ def main():
                 info = ydl.extract_info(url, download=False)
                 
                 if 'entries' in info and info['entries']:
-                    is_playlist = 'playlist' in url or 'list=' in url
-                    if is_playlist and 'watch?v=' in url:
-                        video_id = url.split('v=')[1].split('&')[0]
-                        video_url = f"https://www.youtube.com/watch?v={video_id}"
-                        tipo = "híbrido (forzado a vídeo individual)"
+                    # Si explícitamente es una lista/canal y NO un vídeo suelto
+                    if 'list=' in url and 'watch?v=' not in url:
+                        latest_entry = info['entries'][-1]
+                        tipo = "playlist"
                     else:
-                        if is_playlist:
-                            latest_entry = info['entries'][-1]
-                            tipo = "playlist"
-                        else:
-                            latest_entry = info['entries'][0]
-                            tipo = "canal"
-                        video_id = latest_entry['id']
-                        video_url = f"https://www.youtube.com/watch?v={video_id}"
-                    
+                        latest_entry = info['entries'][0]
+                        tipo = "canal"
+                    video_id = latest_entry['id']
+                    video_url = f"https://www.youtube.com/watch?v={video_id}"
                     print(f"-> Detectado {tipo}. Objetivo: {video_id}")
                 else:
                     video_id = info['id']
