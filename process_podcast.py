@@ -33,40 +33,65 @@ def clean_video_id(url):
         return url.split('youtu.be/')[1].split('?')[0]
     return None
 
+def generate_rss(episodes):
+    rss_items = ""
+    for ep in episodes:
+        title = ep['title'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        desc = ep['description'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        seconds = ep['duration']
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        duration_str = f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+        rss_items += f"""
+        <item>
+            <title>{title}</title>
+            <description>{desc}</description>
+            <pubDate>{ep['pubDate']}</pubDate>
+            <enclosure url="{ep['audio_url']}" type="audio/mpeg" />
+            <guid isPermaLink="false">{ep['id']}</guid>
+            <itunes:duration>{duration_str}</itunes:duration>
+        </item>"""
+
+    rss_feed = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Mi Podcast Automatizado</title>
+    <link>https://github.com/{REPO_NAME}</link>
+    <language>es</language>
+    <description>Audios de YouTube convertidos a Podcast.</description>
+    <itunes:image href="https://raw.githubusercontent.com/{REPO_NAME}/main/podcast_cover.jpg"/>
+    {rss_items}
+  </channel>
+</rss>"""
+    with open('feed.xml', 'w', encoding='utf-8') as f:
+        f.write(rss_feed)
+
 def download_and_metadata(video_url):
-    # PARÁMETROS DE CAMUFLAJE EXTREMO
+    # ESTRATEGIA MAESTRA: Forzamos clientes que NO usan cookies y saltan bloqueos
     ydl_opts = {
-        'format': 'ba/b',  # Descarga el mejor audio o lo que esté disponible
+        'format': 'bestaudio/best', 
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '128', 
         }],
-        'quiet': False,       # Activamos logs para ver exactamente qué hace
-        'no_warnings': False,
-        # Fingimos ser un navegador Safari en MacOS legítimo
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'es-ES,es;q=0.9',
-            'Sec-Fetch-Mode': 'navigate',
-        },
-        # Forzamos los clientes nativos simulados que mejor saltan las restricciones
+        'quiet': False,
+        'no_warnings': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['ios', 'android'],
+                # Usamos los clientes embebidos de TV y Música que no requieren verificar bot
+                'player_client': ['tvembedded', 'youtube_music', 'web_embedded'],
                 'skip': ['dash', 'hls']
             }
-        },
-        'sleep_interval': 3, # Espera 3 segundos para no saturar
+        }
     }
     
-    cookie_path = os.path.abspath('cookies.txt')
-    if os.path.exists(cookie_path):
-        ydl_opts['cookiefile'] = cookie_path
-        print("-> Añadiendo pasaporte de cookies al camuflaje...")
-        
+    # IMPORTANTE: NO inyectamos cookies.txt aquí de forma intencionada
+    # para dejar que los clientes 'tvembedded' y 'youtube_music' operen con total libertad.
+    
     os.makedirs('downloads', exist_ok=True)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
@@ -107,21 +132,6 @@ def main():
             continue
             
         video_url = f"https://www.youtube.com/watch?v={video_id}"
-        print(f"¡Nuevo episodio encontrado! Iniciando descarga en modo sigilo...")
+        print(f"¡Nuevo episodio encontrado! Iniciando descarga...")
         
-        ep_meta = download_and_metadata(video_url)
-        if ep_meta:
-            data.insert(0, ep_meta)
-            new_episodes_added = True
-            
-    generate_rss(data)
-    
-    if new_episodes_added:
-        save_data(data)
-        
-    github_env = os.environ.get('GITHUB_ENV', 'dummy_env.txt')
-    with open(github_env, 'a') as f:
-        f.write(f"NEW_EPISODES={'true' if new_episodes_added else 'false'}\n")
-
-if __name__ == '__main__':
-    main()
+        ep_
