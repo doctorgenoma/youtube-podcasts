@@ -30,8 +30,6 @@ def get_urls():
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
 def download_and_metadata(video_url):
-    # SOLUCIÓN AL ERROR DE FORMATO:
-    # 'bestaudio/best' a veces falla. Usamos 'bestaudio/bestvideo+bestaudio/best' como alternativa
     ydl_opts = {
         'format': 'bestaudio/bestvideo+bestaudio/best', 
         'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -44,8 +42,11 @@ def download_and_metadata(video_url):
         'no_warnings': True,
     }
     
-    if os.path.exists('cookies.txt'):
-        ydl_opts['cookiefile'] = 'cookies.txt'
+    # Ruta absoluta para asegurar que yt-dlp encuentra las cookies en el servidor
+    cookie_path = os.path.abspath('cookies.txt')
+    if os.path.exists(cookie_path):
+        ydl_opts['cookiefile'] = cookie_path
+        print("-> Inyectando archivo de cookies para la descarga...")
         
     os.makedirs('downloads', exist_ok=True)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -115,8 +116,9 @@ def main():
             'extract_flat': True,
             'no_warnings': True,
         }
-        if os.path.exists('cookies.txt'):
-            ydl_opts_flat['cookiefile'] = 'cookies.txt'
+        cookie_path = os.path.abspath('cookies.txt')
+        if os.path.exists(cookie_path):
+            ydl_opts_flat['cookiefile'] = cookie_path
             
         print(f"Analizando origen: {url}")
         with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
