@@ -41,8 +41,6 @@ def download_and_metadata(video_url):
         'quiet': True,
         'no_warnings': True,
     }
-        }
-    }
     
     cookie_path = os.path.abspath('cookies.txt')
     if os.path.exists(cookie_path):
