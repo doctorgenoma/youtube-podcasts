@@ -8,7 +8,6 @@ on:
 permissions:
   contents: write
 
-# Solución al aviso de GitHub de Node.js 20
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true' 
 
@@ -32,8 +31,18 @@ jobs:
       - name: Instalar yt-dlp
         run: pip install yt-dlp
 
+      # PASO NUEVO: Crea el archivo temporal a partir del secreto de GitHub
+      - name: Configurar Cookies de YouTube
+        run: |
+          echo "${{ secrets.YT_COOKIES }}" > cookies.txt
+        if: "${{ secrets.YT_COOKIES != '' }}"
+
       - name: Ejecutar script de Python
         run: python process_podcast.py
+
+      # PASO NUEVO: Borra el archivo por seguridad física antes de guardar cambios
+      - name: Eliminar Cookies temporales
+        run: rm -f cookies.txt
 
       - name: Subir MP3 a GitHub Releases
         if: env.NEW_EPISODES == 'true'
@@ -50,7 +59,6 @@ jobs:
           git config --global user.email "bot@podcast.com"
           git add podcast_data.json feed.xml || true
           
-          # Comprobación segura para evitar que git falle si no hay cambios reales
           if git diff --staged --quiet; then
             echo "No hay cambios en los archivos. Nada que subir."
           else
