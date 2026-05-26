@@ -28,10 +28,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Instalar yt-dlp
-        run: pip install yt-dlp
+      # ACTUALIZACIÓN: Instalamos la versión más reciente en desarrollo de yt-dlp
+      - name: Instalar yt-dlp actualizado
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install --no-cache-dir https://github.com/yt-dlp/yt-dlp/archive/master.tar.gz
 
-      # PASO CORREGIDO: Pasamos el secreto a 'env' primero y el 'if' lee el 'env'
       - name: Configurar Cookies de YouTube
         env:
           TEMP_COOKIES: ${{ secrets.YT_COOKIES }}
