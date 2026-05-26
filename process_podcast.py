@@ -11,11 +11,11 @@ def load_data():
         try:
             with open('podcast_data.json', 'r', encoding='utf-8') as f:
                 content = f.read().strip()
-                if not content:  # Si el archivo está totalmente vacío (0 bytes)
+                if not content:
                     return []
                 return json.loads(content)
         except Exception as e:
-            print(f"Aviso: podcast_data.json no era un JSON válido ({e}). Se restablecerá de forma segura.")
+            print(f"Aviso: podcast_data.json no era válido. Se restablecerá de forma segura.")
             return []
     return []
 
@@ -41,6 +41,11 @@ def download_and_metadata(video_url):
         'quiet': True,
         'no_warnings': True,
     }
+    
+    # Inyectar pasaporte de cookies si existe
+    if os.path.exists('cookies.txt'):
+        ydl_opts['cookiefile'] = 'cookies.txt'
+        
     os.makedirs('downloads', exist_ok=True)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
@@ -109,22 +114,33 @@ def main():
             'extract_flat': True,
             'no_warnings': True,
         }
-        
+        if os.path.exists('cookies.txt'):
+            ydl_opts_flat['cookiefile'] = 'cookies.txt'
+            
         print(f"Analizando origen: {url}")
         with yt_dlp.YoutubeDL(ydl_opts_flat) as ydl:
             try:
                 info = ydl.extract_info(url, download=False)
                 
+                # Gestión mejorada para URLs híbridas (vídeos dentro de listas)
                 if 'entries' in info and info['entries']:
                     is_playlist = 'playlist' in url or 'list=' in url
-                    if is_playlist:
-                        latest_entry = info['entries'][-1]
-                        tipo = "playlist"
+                    # Si es un vídeo suelto pero venía con parámetro &list=, preferimos tratarlo como vídeo suelto si la extracción fallase como lista
+                    if is_playlist and 'watch?v=' in url:
+                        # Extraer ID directo de la URL original para evitar colisiones
+                        video_id = url.split('v=')[1].split('&')[0]
+                        video_url = f"https://www.youtube.com/watch?v={video_id}"
+                        tipo = "híbrido (forzado a vídeo individual)"
                     else:
-                        latest_entry = info['entries'][0]
-                        tipo = "canal"
-                    video_id = latest_entry['id']
-                    video_url = f"https://www.youtube.com/watch?v={video_id}"
+                        if is_playlist:
+                            latest_entry = info['entries'][-1]
+                            tipo = "playlist"
+                        else:
+                            latest_entry = info['entries'][0]
+                            tipo = "canal"
+                        video_id = latest_entry['id']
+                        video_url = f"https://www.youtube.com/watch?v={video_id}"
+                    
                     print(f"-> Detectado {tipo}. Objetivo: {video_id}")
                 else:
                     video_id = info['id']
@@ -138,7 +154,7 @@ def main():
             print(f"El vídeo {video_id} ya existe. Saltando...")
             continue
             
-        print(f"¡Nuevo episodio encontrado! Descargando: {video_id}")
+        print(f"¡Nuevo episodio encontrado! Descargando de forma autenticada: {video_id}")
         ep_meta = download_and_metadata(video_url)
         if ep_meta:
             data.insert(0, ep_meta)
