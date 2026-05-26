@@ -30,9 +30,8 @@ def get_urls():
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
 def download_and_metadata(video_url):
-    # Forzamos compatibilidad máxima de formatos y simuladores de clientes (iOS, Android, Web)
     ydl_opts = {
-        'format': 'bestaudio/best', 
+        'format': 'ba/b',  # Selecciona el mejor audio disponible o el bloque completo
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
@@ -41,11 +40,7 @@ def download_and_metadata(video_url):
         }],
         'quiet': True,
         'no_warnings': True,
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'ios', 'web'],
-                'skip': ['dash', 'hls']
-            }
+    }
         }
     }
     
