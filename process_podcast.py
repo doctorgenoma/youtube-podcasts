@@ -22,9 +22,13 @@ def save_data(data):
 
 def get_urls():
     if not os.path.exists('urls.txt'):
+        print("❌ ALERTA CRÍTICA: El archivo 'urls.txt' NO EXISTE en el repositorio.")
         return []
     with open('urls.txt', 'r', encoding='utf-8') as f:
-        return [line.strip() for line in f if line.strip() and not line.startswith('#')]
+        lines = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+        if not lines:
+            print("⚠️ AVISO: El archivo 'urls.txt' está VACÍO o todas sus líneas están comentadas con #.")
+        return lines
 
 def clean_video_id(url):
     if 'watch?v=' in url:
@@ -69,7 +73,6 @@ def generate_rss(episodes):
         f.write(rss_feed)
 
 def download_and_metadata(video_url):
-    # ESTRATEGIA MAESTRA: Forzamos clientes que NO usan cookies y saltan bloqueos
     ydl_opts = {
         'format': 'bestaudio/best', 
         'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -82,15 +85,11 @@ def download_and_metadata(video_url):
         'no_warnings': True,
         'extractor_args': {
             'youtube': {
-                # Usamos los clientes embebidos de TV y Música que no requieren verificar bot
                 'player_client': ['tvembedded', 'youtube_music', 'web_embedded'],
                 'skip': ['dash', 'hls']
             }
         }
     }
-    
-    # IMPORTANTE: NO inyectamos cookies.txt aquí de forma intencionada
-    # para dejar que los clientes 'tvembedded' y 'youtube_music' operen con total libertad.
     
     os.makedirs('downloads', exist_ok=True)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -110,28 +109,48 @@ def download_and_metadata(video_url):
                 'duration': info.get('duration', 0)
             }
         except Exception as e:
-            print(f"Error crítico en descarga: {e}")
+            print(f"❌ Error crítico en descarga: {e}")
             return None
 
 def main():
+    print("🚀 Iniciando script de automatización del Podcast...")
     data = load_data()
     existing_ids = {ep['id'] for ep in data}
     urls = get_urls()
+    
+    print(f"📋 Se han cargado {len(urls)} URLs para procesar.")
     new_episodes_added = False
     
     for url in urls:
         video_id = clean_video_id(url)
         if not video_id:
-            print(f"URL no reconocida: {url}")
+            print(f"❌ URL no reconocida o inválida: {url}")
             continue
             
-        print(f"Analizando origen limpio: https://www.youtube.com/watch?v={video_id}")
+        print(f"🔍 Analizando origen limpio: https://www.youtube.com/watch?v={video_id}")
         
         if video_id in existing_ids:
-            print(f"El vídeo {video_id} ya existe. Saltando...")
+            print(f"⏭️ El vídeo {video_id} ya existe en el historial. Saltando...")
             continue
             
         video_url = f"https://www.youtube.com/watch?v={video_id}"
-        print(f"¡Nuevo episodio encontrado! Iniciando descarga...")
+        print(f"📥 ¡Nuevo episodio encontrado! Iniciando descarga...")
         
-        ep_
+        ep_meta = download_and_metadata(video_url)
+        if ep_meta:
+            data.insert(0, ep_meta)
+            new_episodes_added = True
+            
+    generate_rss(data)
+    
+    if new_episodes_added:
+        save_data(data)
+        print("💾 Historial de podcast_data.json actualizado con éxito.")
+        
+    github_env = os.environ.get('GITHUB_ENV', 'dummy_env.txt')
+    with open(github_env, 'a') as f:
+        f.write(f"NEW_EPISODES={'true' if new_episodes_added else 'false'}\n")
+    print("🏁 Fin de la ejecución del script.")
+
+if __name__ == '__main__':
+    main()
