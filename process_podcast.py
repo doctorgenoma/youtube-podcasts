@@ -3,7 +3,6 @@ import json
 import yt_dlp
 from datetime import datetime
 
-# Detectar el repositorio dinámicamente en GitHub
 REPO_NAME = os.environ.get('GITHUB_REPOSITORY', 'tu-usuario/tu-repositorio')
 RELEASE_URL_TEMPLATE = f"https://github.com/{REPO_NAME}/releases/download/episodes/{{video_id}}.mp3"
 
@@ -24,7 +23,6 @@ def get_urls():
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
 def download_and_metadata(video_url):
-    """Procesa y descarga un único vídeo individual seguro"""
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -36,14 +34,11 @@ def download_and_metadata(video_url):
         'quiet': True,
         'no_warnings': True,
     }
-    
     os.makedirs('downloads', exist_ok=True)
-    
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info = ydl.extract_info(video_url, download=True)
             video_id = info['id']
-            
             upload_date = info.get('upload_date', datetime.now().strftime('%Y%m%d'))
             dt = datetime.strptime(upload_date, '%Y%m%d')
             pub_date = dt.strftime('%a, %d %b %Y %H:%M:%S +0000')
@@ -65,7 +60,6 @@ def generate_rss(episodes):
     for ep in episodes:
         title = ep['title'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
         desc = ep['description'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-        
         seconds = ep['duration']
         hours = seconds // 3600
         minutes = (seconds % 3600) // 60
@@ -93,7 +87,6 @@ def generate_rss(episodes):
     {rss_items}
   </channel>
 </rss>"""
-    
     with open('feed.xml', 'w', encoding='utf-8') as f:
         f.write(rss_feed)
 
@@ -104,12 +97,9 @@ def main():
     new_episodes_added = False
     
     for url in urls:
-        # TRUCO: 'extract_flat' no descarga nada, solo lee la lista. 
-        # 'playlist_items': '1' fuerza a leer SOLO el primer video (el más reciente).
         ydl_opts_flat = {
             'quiet': True,
-            'extract_flat': True,
-            'playlist_items': '1',
+            'extract_flat': True,  # Solo lee la estructura, no descarga vídeos (es ultra rápido)
             'no_warnings': True,
         }
         
@@ -118,14 +108,23 @@ def main():
             try:
                 info = ydl.extract_info(url, download=False)
                 
-                # Si es un canal o playlist, info contiene 'entries'
                 if 'entries' in info and info['entries']:
-                    latest_entry = info['entries'][0]
+                    # ¿Es una playlist o un canal?
+                    is_playlist = 'playlist' in url or 'list=' in url
+                    
+                    if is_playlist:
+                        # En Playlists, el último vídeo suele añadirse AL FINAL de la lista (índice -1)
+                        latest_entry = info['entries'][-1]
+                        tipo = "playlist (último elemento)"
+                    else:
+                        # En Canales, el último vídeo subido está AL PRINCIPIO (índice 0)
+                        latest_entry = info['entries'][0]
+                        tipo = "canal (primer elemento)"
+                        
                     video_id = latest_entry['id']
                     video_url = f"https://www.youtube.com/watch?v={video_id}"
-                    print(f"-> Detectado canal/playlist. El vídeo más reciente es: {video_id}")
+                    print(f"-> Detectado {tipo}. El objetivo es: {video_id}")
                 else:
-                    # Si era un vídeo individual directo
                     video_id = info['id']
                     video_url = url
                     print(f"-> Detectado vídeo individual: {video_id}")
@@ -134,26 +133,10 @@ def main():
                 print(f"Error al analizar la URL {url}: {e}")
                 continue
                 
-        # Comprobar si ya lo teníamos en el podcast
         if video_id in existing_ids:
-            print(f"El vídeo {video_id} ya ha sido procesado previamente. Saltando...")
+            print(f"El vídeo {video_id} ya existe en el podcast. Saltando...")
             continue
             
-        print(f"¡Nuevo episodio encontrado! Iniciando descarga segura de: {video_id}")
+        print(f"¡Nuevo episodio encontrado! Descargando: {video_id}")
         ep_meta = download_and_metadata(video_url)
-        if ep_meta:
-            data.insert(0, ep_meta)
-            new_episodes_added = True
-            
-    generate_rss(data)
-    
-    # Comunicar el resultado a GitHub Actions
-    github_env = os.environ.get('GITHUB_ENV', 'dummy_env.txt')
-    with open(github_env, 'a') as f:
-        if new_episodes_added:
-            f.write("NEW_EPISODES=true\n")
-        else:
-            f.write("NEW_EPISODES=false\n")
-
-if __name__ == '__main__':
-    main()
+        if ep_meta
