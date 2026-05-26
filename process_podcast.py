@@ -8,8 +8,15 @@ RELEASE_URL_TEMPLATE = f"https://github.com/{REPO_NAME}/releases/download/episod
 
 def load_data():
     if os.path.exists('podcast_data.json'):
-        with open('podcast_data.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
+        try:
+            with open('podcast_data.json', 'r', encoding='utf-8') as f:
+                content = f.read().strip()
+                if not content:  # Si el archivo está totalmente vacío (0 bytes)
+                    return []
+                return json.loads(content)
+        except Exception as e:
+            print(f"Aviso: podcast_data.json no era un JSON válido ({e}). Se restablecerá de forma segura.")
+            return []
     return []
 
 def save_data(data):
@@ -99,7 +106,7 @@ def main():
     for url in urls:
         ydl_opts_flat = {
             'quiet': True,
-            'extract_flat': True,  # Solo lee la estructura, no descarga vídeos (es ultra rápido)
+            'extract_flat': True,
             'no_warnings': True,
         }
         
@@ -109,34 +116,45 @@ def main():
                 info = ydl.extract_info(url, download=False)
                 
                 if 'entries' in info and info['entries']:
-                    # ¿Es una playlist o un canal?
                     is_playlist = 'playlist' in url or 'list=' in url
-                    
                     if is_playlist:
-                        # En Playlists, el último vídeo suele añadirse AL FINAL de la lista (índice -1)
                         latest_entry = info['entries'][-1]
-                        tipo = "playlist (último elemento)"
+                        tipo = "playlist"
                     else:
-                        # En Canales, el último vídeo subido está AL PRINCIPIO (índice 0)
                         latest_entry = info['entries'][0]
-                        tipo = "canal (primer elemento)"
-                        
+                        tipo = "canal"
                     video_id = latest_entry['id']
                     video_url = f"https://www.youtube.com/watch?v={video_id}"
-                    print(f"-> Detectado {tipo}. El objetivo es: {video_id}")
+                    print(f"-> Detectado {tipo}. Objetivo: {video_id}")
                 else:
                     video_id = info['id']
                     video_url = url
                     print(f"-> Detectado vídeo individual: {video_id}")
-                    
             except Exception as e:
                 print(f"Error al analizar la URL {url}: {e}")
                 continue
                 
         if video_id in existing_ids:
-            print(f"El vídeo {video_id} ya existe en el podcast. Saltando...")
+            print(f"El vídeo {video_id} ya existe. Saltando...")
             continue
             
         print(f"¡Nuevo episodio encontrado! Descargando: {video_id}")
         ep_meta = download_and_metadata(video_url)
-        if ep_meta
+        if ep_meta:
+            data.insert(0, ep_meta)
+            new_episodes_added = True
+            
+    generate_rss(data)
+    
+    if new_episodes_added:
+        save_data(data)
+        
+    github_env = os.environ.get('GITHUB_ENV', 'dummy_env.txt')
+    with open(github_env, 'a') as f:
+        if new_episodes_added:
+            f.write("NEW_EPISODES=true\n")
+        else:
+            f.write("NEW_EPISODES=false\n")
+
+if __name__ == '__main__':
+    main()
