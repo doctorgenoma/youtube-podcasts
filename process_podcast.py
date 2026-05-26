@@ -30,8 +30,10 @@ def get_urls():
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
 def download_and_metadata(video_url):
+    # SOLUCIÓN AL ERROR DE FORMATO:
+    # 'bestaudio/best' a veces falla. Usamos 'bestaudio/bestvideo+bestaudio/best' como alternativa
     ydl_opts = {
-        'format': 'bestaudio/best',
+        'format': 'bestaudio/bestvideo+bestaudio/best', 
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
@@ -42,7 +44,6 @@ def download_and_metadata(video_url):
         'no_warnings': True,
     }
     
-    # Inyectar pasaporte de cookies si existe
     if os.path.exists('cookies.txt'):
         ydl_opts['cookiefile'] = 'cookies.txt'
         
@@ -122,12 +123,9 @@ def main():
             try:
                 info = ydl.extract_info(url, download=False)
                 
-                # Gestión mejorada para URLs híbridas (vídeos dentro de listas)
                 if 'entries' in info and info['entries']:
                     is_playlist = 'playlist' in url or 'list=' in url
-                    # Si es un vídeo suelto pero venía con parámetro &list=, preferimos tratarlo como vídeo suelto si la extracción fallase como lista
                     if is_playlist and 'watch?v=' in url:
-                        # Extraer ID directo de la URL original para evitar colisiones
                         video_id = url.split('v=')[1].split('&')[0]
                         video_url = f"https://www.youtube.com/watch?v={video_id}"
                         tipo = "híbrido (forzado a vídeo individual)"
