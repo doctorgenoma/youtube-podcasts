@@ -31,16 +31,17 @@ jobs:
       - name: Instalar yt-dlp
         run: pip install yt-dlp
 
-      # PASO NUEVO: Crea el archivo temporal a partir del secreto de GitHub
+      # PASO CORREGIDO: Pasamos el secreto a 'env' primero y el 'if' lee el 'env'
       - name: Configurar Cookies de YouTube
+        env:
+          TEMP_COOKIES: ${{ secrets.YT_COOKIES }}
+        if: env.TEMP_COOKIES != ''
         run: |
-          echo "${{ secrets.YT_COOKIES }}" > cookies.txt
-        if: "${{ secrets.YT_COOKIES != '' }}"
+          echo "$TEMP_COOKIES" > cookies.txt
 
       - name: Ejecutar script de Python
         run: python process_podcast.py
 
-      # PASO NUEVO: Borra el archivo por seguridad física antes de guardar cambios
       - name: Eliminar Cookies temporales
         run: rm -f cookies.txt
 
