@@ -48,6 +48,7 @@ jobs:
         with:
           tag_name: episodes
           files: downloads/*.mp3
+          allowUpdates: true  # <--- ESTA LÍNEA OBLIGA A GITHUB A SOBRESCRIBIR Y MOSTRAR EL MP3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
