@@ -1,0 +1,49 @@
+name: Sync YouTube Podcast
+
+on:
+  schedule:
+    - cron: '0 4 * * *' # Se ejecuta de forma automática a las 4:00 AM cada día
+  workflow_dispatch: # Te permite darle al botón "Run workflow" manualmente
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Instalar FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Instalar yt-dlp
+        run: pip install yt-dlp
+
+      - name: Ejecutar script de Python
+        run: python process_podcast.py
+
+      - name: Subir MP3 a GitHub Releases
+        if: env.NEW_EPISODES == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: episodes
+          files: downloads/*.mp3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Guardar cambios en el repositorio
+        run: |
+          git config --global user.name "PodcastBot"
+          git config --global user.email "bot@podcast.com"
+          # Añadir cambios tanto si hay nuevos datos como si solo se regeneró el xml
+          git add podcast_data.json feed.xml || true
+          git commit -m "Bot: Actualizar feed del podcast" && git push || echo "No hay cambios para subir"
