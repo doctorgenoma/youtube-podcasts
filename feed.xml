@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Mi Podcast Automatizado</title>
+    <link>https://github.com/doctorgenoma/youtube-podcasts</link>
+    <language>es</language>
+    <description>Audios de YouTube convertidos a Podcast.</description>
+    <itunes:image href="https://raw.githubusercontent.com/doctorgenoma/youtube-podcasts/main/podcast_cover.jpg"/>
+    
+  </channel>
+</rss>
